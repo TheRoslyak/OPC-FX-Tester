@@ -78,7 +78,7 @@
 
 /* Configurable Parameters */
 //If you disable the below macro then two way communication then only publisher will be active
-//#define             TWO_WAY_COMMUNICATION 1
+//#define             TWO_WAY_COMMUNICATION
 /* Cycle time in milliseconds */
 #define             DEFAULT_CYCLE_TIME                    0.25
 /* Qbv offset */
@@ -87,7 +87,7 @@
 #define             PUBLISHER_ID                          2234
 #define             WRITER_GROUP_ID                       101
 #define             DATA_SET_WRITER_ID                    62541
-#define             DEFAULT_PUBLISHING_MAC_ADDRESS        "opc.eth://08:5a:11:34:52:54"
+#define             DEFAULT_PUBLISHING_MAC_ADDRESS        "opc.eth://01-00-5E-7F-00-01:8.7"
 #define             DEFAULT_PUBLISHER_MULTICAST_ADDRESS   "opc.udp://224.0.0.22:4840/"
 #define             PUBLISHER_ID_SUB                      2235
 #define             WRITER_GROUP_ID_SUB                   100
@@ -96,7 +96,7 @@
 #define             REPEATED_NODECOUNTS                   2    // Default to publish 64 bytes
 #define             PORT_NUMBER                           62541
 #define             DEFAULT_PUBAPP_THREAD_PRIORITY        85
-#define             DEFAULT_PUBAPP_THREAD_CORE            0
+#define             DEFAULT_PUBAPP_THREAD_CORE            1
 
 
 
@@ -117,7 +117,7 @@
 #endif
 #define             CLOCKID                                CLOCK_MONOTONIC
 #define             ETH_TRANSPORT_PROFILE                  "http://opcfoundation.org/UA-Profile/Transport/pubsub-eth-uadp"
-#define             UDP_TRANSPORT_PROFILE                "http://opcfoundation.org/UA-Profile/Transport/pubsub-udp-uadp"
+#define             UDP_TRANSPORT_PROFILE                  "http://opcfoundation.org/UA-Profile/Transport/pubsub-udp-uadp"
 
 
 /* If the Hardcoded publisher/subscriber MAC addresses need to be changed,
@@ -129,7 +129,6 @@ UA_Boolean        runningServer           = UA_TRUE;
 
 
 char*             pubUri               = DEFAULT_PUBLISHING_MAC_ADDRESS;
-
 
 
 static UA_Double  cycleTimeInMsec      = DEFAULT_CYCLE_TIME;
@@ -307,60 +306,33 @@ externalDataReadNotificationCallback(UA_Server *server, const UA_NodeId *session
  *
  * Create connection, writergroup, datasetwriter and publisheddataset for Publisher thread.
  */
-static void addPubSubConnection(UA_Server *server, UA_String *transportProfile, 
-                                UA_NetworkAddressUrlDataType *networkAddressUrlPub) {
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Starting to configure PubSub connection");
-
-    // Исправленное логирование для transportProfile и networkAddressUrlPub
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Transport Profile URI: %.*s", 
-                (int)transportProfile->length, transportProfile->data);
-    // Исправленное логирование для URL
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Network Address URL: %.*s", 
-                (int)networkAddressUrlPub->url.length, networkAddressUrlPub->url.data);
-
+static void 
+addPubSubConnection(UA_Server *server, UA_String *transportProfile, 
+                                UA_NetworkAddressUrlDataType *networkAddressUrlPub){
+    /* Details about the connection configuration and handling are located
+     * in the pubsub connection tutorial */
     UA_PubSubConnectionConfig connectionConfig;
     memset(&connectionConfig, 0, sizeof(connectionConfig));
-    connectionConfig.name = UA_STRING("Publisher Connection");
-    connectionConfig.enabled = UA_TRUE;
-
-    UA_NetworkAddressUrlDataType networkAddressUrl = *networkAddressUrlPub;
-    connectionConfig.transportProfileUri = *transportProfile;
-
+    connectionConfig.name                                   = UA_STRING("Publisher Connection");
+    connectionConfig.enabled                                = UA_TRUE;
+UA_NetworkAddressUrlDataType networkAddressUrl          = *networkAddressUrlPub;
+    connectionConfig.transportProfileUri                    = *transportProfile;
     UA_Variant_setScalar(&connectionConfig.address, &networkAddressUrl, 
                          &UA_TYPES[UA_TYPES_NETWORKADDRESSURLDATATYPE]);
+connectionConfig.publisherId.numeric                    = PUBLISHER_ID;
 
-    connectionConfig.publisherId.numeric = PUBLISHER_ID;
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Publisher ID: %lu", connectionConfig.publisherId.numeric);
-
-    // Логирование socketPriority и disableSoTxtime
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Socket Priority: %u", socketPriority);
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Disable SoTxtime: %s", disableSoTxtime ? "true" : "false");
-
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Setting connection options...");
-
+    /* Connection options are given as Key/Value Pairs - Sockprio and Txtime */
     UA_KeyValuePair connectionOptions[2];
     connectionOptions[0].key = UA_QUALIFIEDNAME(0, "sockpriority");
     UA_Variant_setScalar(&connectionOptions[0].value, &socketPriority, &UA_TYPES[UA_TYPES_UINT32]);
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Sockpriority set to: %u", socketPriority);
 
     connectionOptions[1].key = UA_QUALIFIEDNAME(0, "enablesotxtime");
     UA_Variant_setScalar(&connectionOptions[1].value, &disableSoTxtime, &UA_TYPES[UA_TYPES_BOOLEAN]);
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "enablesotxtime set to: %s", disableSoTxtime ? "true" : "false");
 
-    connectionConfig.connectionProperties = connectionOptions;
+    connectionConfig.connectionProperties     = connectionOptions;
     connectionConfig.connectionPropertiesSize = 2;
 
-    // Логирование после настройки connectionOptions
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Connection options set. Properties size: %zu", connectionConfig.connectionPropertiesSize);
-
-    // Попытка добавить PubSub соединение
-    UA_StatusCode retval = UA_Server_addPubSubConnection(server, &connectionConfig, &connectionIdent);
-    if(retval == UA_STATUSCODE_GOOD) {
-        UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "PubSub Connection successfully added");
-    } else {
-        UA_LOG_ERROR(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Adding PubSub Connection failed with status code: %s", 
-                     UA_StatusCode_name(retval));
-    }
+ UA_Server_addPubSubConnection(server, &connectionConfig, &connectionIdent);
 }
 
 /* PublishedDataset handling */
@@ -548,7 +520,7 @@ updateMeasurementsPublisher(struct timespec start_time,
     }
 
     if(consolePrint)
-        UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,"Pub:% " PRId64 ",%ld.%09ld\n", counterValue, start_time.tv_sec, start_time.tv_nsec);
+        UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_USERLAND,"Pub:%"PRId64",%ld.%09ld\n", counterValue, start_time.tv_sec, start_time.tv_nsec);
 
     if (signalTerm != UA_TRUE){
         UA_UInt64 actualTimeValue = (UA_UInt64)((start_time.tv_sec * SECONDS) + start_time.tv_nsec) + monotonicOffsetValue;
@@ -647,7 +619,7 @@ void *pubApp(void *arg) {
         nanoSecondFieldConversion(&nextnanosleeptimePubApplication);
     }
 
-
+runningServer = UA_FALSE;
     return (void*)NULL;
 }
 
@@ -725,32 +697,6 @@ static void addServerNodes(UA_Server *server) {
                               UA_QUALIFIEDNAME(1, "Publisher Counter"),
                               UA_NODEID_NULL, publisherAttr, NULL, &pubNodeID);
 
-    for (UA_Int32 iterator = 0; iterator < REPEATED_NODECOUNTS; iterator++)
-    {
-        UA_VariableAttributes repeatedNodePub = UA_VariableAttributes_default;
-        UA_UInt64 repeatedPublishValue        = 0;
-        repeatedNodePub.accessLevel           = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
-        repeatedNodePub.dataType              = UA_TYPES[UA_TYPES_UINT64].typeId;
-        UA_Variant_setScalar(&repeatedNodePub.value, &repeatedPublishValue, &UA_TYPES[UA_TYPES_UINT64]);
-        repeatedNodePub.displayName           = UA_LOCALIZEDTEXT("en-US", "Publisher RepeatedCounter");
-        newNodeId                             = UA_NODEID_NUMERIC(1, (UA_UInt32)iterator+10000);
-        UA_Server_addVariableNode(server, newNodeId, objectId,
-                                 UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT),
-                                 UA_QUALIFIEDNAME(1, "Publisher RepeatedCounter"),
-                                 UA_NODEID_NULL, repeatedNodePub, NULL, &pubRepeatedCountNodeID);
-    }
-    UA_VariableAttributes runningStatusPub = UA_VariableAttributes_default;
-    UA_Boolean runningPubStatus            = 0;
-    runningStatusPub.accessLevel           = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
-    UA_Variant_setScalar(&runningStatusPub.value, &runningPubStatus, &UA_TYPES[UA_TYPES_BOOLEAN]);
-    runningStatusPub.displayName           = UA_LOCALIZEDTEXT("en-US", "RunningStatus Pub");
-    runningStatusPub.dataType              = UA_TYPES[UA_TYPES_BOOLEAN].typeId;
-    newNodeId                              = UA_NODEID_NUMERIC(1, (UA_UInt32)20000);
-    UA_Server_addVariableNode(server, newNodeId, objectId,
-                              UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT),
-                              UA_QUALIFIEDNAME(1, "RunningStatus Pub"),
-                              UA_NODEID_NULL, runningStatusPub, NULL, &runningPubStatusNodeID);
-
 }
 
 /**
@@ -794,12 +740,10 @@ static void usage(char *appname)
         " -cycleTimeInMsec   [num]    Cycle time in milli seconds (default %lf)\n"
         " -socketPriority    [num]    Set publisher SO_PRIORITY to (default %d)\n"
         " -pubAppPriority    [num]    publisher and userApp thread priority value (default %d)\n"
-        
         " -pubAppCore        [num]    Run on CPU for publisher+pubUserApplication thread (default %d)\n"
-       
         " -pubUri            [name]   Publisher Mac address(default %s - where 8 is the VLAN ID and 3 is the PCP)\n"
         "                             or multicast address(default %s)\n"
-        
+        "                             or multicast address(default %s) \n"
         " -qbvOffset         [num]    QBV offset value (default %d)\n"
         " -operBaseTime [location]    Bastime file location\n"
         " -monotonicOffset [location] Monotonic offset file location\n"
@@ -835,7 +779,7 @@ int main(int argc, char **argv) {
 
     char            *operBaseTimeFileName = NULL;
     char            *monotonicOffsetFileName = NULL;
-    FILE            *operBaseTimefile = NULL;
+    FILE            *operBaseTimefile;
     FILE            *monotonicOffsetFile;
     UA_String       transportProfile;
 
@@ -848,11 +792,8 @@ int main(int argc, char **argv) {
         {"cycleTimeInMsec",      required_argument, 0, 'b'},
         {"socketPriority",       required_argument, 0, 'c'},
         {"pubAppPriority",       required_argument, 0, 'd'},
-        
-        {"pubAppCore",           required_argument, 0, 'f'},
-        
-        {"pubUri",               required_argument, 0, 'h'},
-        
+        {"pubAppCore",           required_argument, 0, 'f'},      
+        {"pubUri",               required_argument, 0, 'h'}, 
         {"qbvOffset",            required_argument, 0, 'j'},
         {"operBaseTime",         required_argument, 0, 'k'},
         {"monotonicOffset",      required_argument, 0, 'l'},
@@ -906,7 +847,6 @@ int main(int argc, char **argv) {
                 consolePrint = UA_TRUE;
                 break;
             case 'p':
-                /* TODO: Application need to be exited independently */
                 enableBlockingSocket = UA_TRUE;
                 break;
             case 'q':
@@ -956,7 +896,7 @@ int main(int argc, char **argv) {
     if (enableCsvLog)
         fpPublisher                   = fopen(filePublishedData, "w");
 
-
+    UA_ServerConfig_addPubSubTransportLayer(config, UA_PubSubTransportLayerEthernet());
 
 
     /* Initialize arguments required for the thread to run */
@@ -966,9 +906,7 @@ int main(int argc, char **argv) {
     /* add axis node and OPCUA pubsub client server counter nodes */
     addServerNodes(server);
 
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Начало создания PubSub соединения");
     addPubSubConnection(server, &transportProfile, &networkAddressUrlPub);
-    UA_LOG_INFO(UA_Log_Stdout, UA_LOGCATEGORY_SERVER, "Соединение PubSub создано");
     addPublishedDataSet(server);
     addDataSetField(server);
     addWriterGroup(server);
@@ -981,11 +919,7 @@ int main(int argc, char **argv) {
     if (operBaseTimeFileName != NULL) {
         long double floatValueBaseTime;
         operBaseTimefile = fopen(operBaseTimeFileName, "r");
-        if(fscanf(operBaseTimefile,"%Lf", &floatValueBaseTime) != 1) {
-    // Обработать ошибку, например, вывести сообщение об ошибке или закрыть файл и завершить программу
-    fclose(operBaseTimefile); // Закрыть файл
-    return -1; // Вернуть код ошибки
-}
+        fscanf(operBaseTimefile,"%Lf", &floatValueBaseTime);
         uint64_t operBaseTimeInNs = (uint64_t)(floatValueBaseTime * SECONDS);
         threadArgPubSub1->operBaseTime = operBaseTimeInNs;
     }
@@ -1035,7 +969,7 @@ int main(int argc, char **argv) {
         size_t pubLoopVariable = 0;
         for (pubLoopVariable = 0; pubLoopVariable < measurementsPublisher;
             pubLoopVariable++) {
-                fprintf(fpPublisher, "% " PRId64 ",%ld.%09ld\n",
+                fprintf(fpPublisher, "%"PRId64",%ld.%09ld\n",
                         publishCounterValue[pubLoopVariable],
                         publishTimestamp[pubLoopVariable].tv_sec,
                         publishTimestamp[pubLoopVariable].tv_nsec);
